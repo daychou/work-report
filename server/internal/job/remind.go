@@ -62,6 +62,8 @@ func (j *PlanRemindJob) Run() {
 	j.runDueRemind(today, todayDate)
 	// 开始提醒的补跑：正常由 12:00 的 cron 触发；若当时服务未运行，18:00 这班补发（去重表保证不重复）
 	j.runStartRemind(today, todayDate)
+	// 待办迁移的补跑：正常由 00:10 的 cron 触发
+	j.MigrateTodoToDoing()
 }
 
 // RunStartRemind 每天 12:00 由 cron 触发：提醒今天开始的任务（启动补跑在 12 点前直接跳过）
@@ -71,7 +73,27 @@ func (j *PlanRemindJob) RunStartRemind() {
 	}
 	today := time.Now().Format("2006-01-02")
 	todayDate, _ := time.ParseInLocation("2006-01-02", today, time.Local)
+	j.MigrateTodoToDoing() // 12:00 班次顺带补跑待办迁移（幂等）
 	j.runStartRemind(today, todayDate)
+}
+
+// MigrateTodoToDoing 待办任务到达开始日期后自动转入「进行中」。
+// 幂等（只更新 todo 且 work_date 已到期的行），每天 00:10 由 cron 触发，
+// 并在 12:00 提醒班次与服务启动时补跑，覆盖停机错过的场景
+func (j *PlanRemindJob) MigrateTodoToDoing() {
+	today := time.Now().Format("2006-01-02")
+	todayDate, _ := time.ParseInLocation("2006-01-02", today, time.Local)
+	res := j.db.Model(&model.WorkItem{}).
+		Where("status = 'todo'").
+		Where("work_date IS NOT NULL AND work_date <= ?", todayDate).
+		Update("status", "doing")
+	if res.Error != nil {
+		log.Printf("[remind] todo->doing migration failed: %v", res.Error)
+		return
+	}
+	if res.RowsAffected > 0 {
+		log.Printf("[remind] todo->doing migration: %d task(s) started", res.RowsAffected)
+	}
 }
 
 // runStartRemind 勾选「开始提醒」的任务：开始日期当天提醒作者与负责人（当天一次）

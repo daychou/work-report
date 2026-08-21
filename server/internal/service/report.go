@@ -158,7 +158,12 @@ func RenderMarkdown(data *ReportData) string {
 		if len(g.Works) > 0 {
 			b.WriteString("### 工作内容\n\n")
 			for _, w := range g.Works {
-				fmt.Fprintf(&b, "- 【%s】%s（%s）\n", w.Project.Name, w.Title, w.WorkDate.Format("01-02"))
+				// work_date 可空（待办未排期），报表查询虽按日期过滤已排除，仍兜底防空指针
+				day := "未定"
+				if w.WorkDate != nil {
+					day = w.WorkDate.Format("01-02")
+				}
+				fmt.Fprintf(&b, "- 【%s】%s（%s）\n", w.Project.Name, w.Title, day)
 				if detail := StripHTML(w.Content); detail != "" {
 					fmt.Fprintf(&b, "  - %s\n", detail)
 				}

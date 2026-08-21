@@ -149,7 +149,12 @@ function sortItems(list: WorkItem[]) {
       return da - db
     })
   } else {
-    arr.sort((a, b) => (a.work_date < b.work_date ? 1 : -1))
+    // 默认按开始日期倒序；未排期（work_date 为空）的待办排最后
+    arr.sort((a, b) => {
+      const da = a.work_date || ''
+      const db = b.work_date || ''
+      return da < db ? 1 : da > db ? -1 : 0
+    })
   }
   return arr
 }
@@ -244,8 +249,9 @@ async function onDragChange(evt: any, col: ColKey) {
     message.warning(`进行中已达 ${doingList.value.length} 项，超过上限 ${DOING_WIP_LIMIT}，注意任务积压`)
   }
   try {
-    await api.updateStatus(item.id, col)
-    syncItem(item.id, { done_at: col === 'done' ? new Date().toISOString() : null })
+    // 用后端返回值同步本地：拖回待办会清空日期与提醒，离开待办会补开始日期
+    const { data } = await api.updateStatus(item.id, col)
+    syncItem(item.id, data)
   } catch {
     message.error('状态更新失败')
     load()
@@ -359,8 +365,8 @@ async function onChangeStatus(item: WorkItem, status: string) {
     message.warning(`进行中已达 ${doingList.value.length} 项，超过上限 ${DOING_WIP_LIMIT}，注意任务积压`)
   }
   try {
-    await api.updateStatus(item.id, status)
-    syncItem(item.id, { done_at: status === 'done' ? new Date().toISOString() : null })
+    const { data } = await api.updateStatus(item.id, status)
+    syncItem(item.id, data)
   } catch {
     item.status = old
     syncItem(item.id, { status: old })
@@ -377,7 +383,8 @@ async function toggleDone(item: WorkItem) {
   syncItem(item.id, { status: next as WorkItem['status'] })
   applyFilters()
   try {
-    await api.updateStatus(item.id, next)
+    const { data } = await api.updateStatus(item.id, next)
+    syncItem(item.id, data)
   } catch {
     item.status = old
     syncItem(item.id, { status: old })

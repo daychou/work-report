@@ -305,7 +305,7 @@ const priorityCN: Record<string, { label: string; type: 'error' | 'warning' | 'd
           class="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-left transition-colors hover:border-violet-300 hover:bg-violet-50/50 dark:border-[#1d212b] dark:hover:border-violet-500/40 dark:hover:bg-violet-500/5"
           @click="openDetail(it)"
         >
-          <span class="shrink-0 text-xs text-slate-400 tabular-nums">{{ dayjs(it.work_date).format('MM-DD ddd') }}</span>
+          <span class="shrink-0 text-xs text-slate-400 tabular-nums">{{ it.work_date ? dayjs(it.work_date).format('MM-DD ddd') : '待定' }}</span>
           <n-tag size="small" :bordered="false" class="shrink-0">{{ it.project?.name }}</n-tag>
           <span class="min-w-0 flex-1 truncate text-sm">{{ it.title }}</span>
           <n-tag size="small" :bordered="false" :type="priorityCN[it.priority]?.type" class="shrink-0">

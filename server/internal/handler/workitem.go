@@ -181,10 +181,11 @@ func (h *WorkItemHandler) Create(c *gin.Context) {
 		return
 	}
 
-	workDate := time.Now()
+	// work_date 可空：空表示待办任务尚未排期（「待办」勾选框清空日期）
+	var workDate *time.Time
 	if body.WorkDate != "" {
 		if d, err := parseDate(body.WorkDate); err == nil {
-			workDate = d
+			workDate = &d
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "work_date 格式应为 YYYY-MM-DD"})
 			return
@@ -221,6 +222,11 @@ func (h *WorkItemHandler) Create(c *gin.Context) {
 			status = "todo"
 		}
 	}
+	// 未排期（无开始日期）或未来开始的任务一律进入待办，开始当天由定时任务自动转入进行中
+	today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local)
+	if workDate == nil || workDate.After(today) {
+		status = "todo"
+	}
 
 	assigneeID := body.AssigneeID
 	if assigneeID == nil {
@@ -233,23 +239,21 @@ func (h *WorkItemHandler) Create(c *gin.Context) {
 		}
 	}
 
-	// 开始提醒仅对「未来开始日期」有意义，其他情况强制关闭
-	today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local)
-
 	item := model.WorkItem{
-		Title:       body.Title,
-		Content:     body.Content,
-		Detail:      body.Detail,
-		ProjectID:   body.ProjectID,
-		AuthorID:    user.ID,
-		AssigneeID:  assigneeID,
-		Kind:        kind,
-		Status:      status,
-		Priority:    priority,
-		WorkDate:    workDate,
-		DueDate:     dueDate,
-		DueRemind:   body.DueRemind,
-		StartRemind: body.StartRemind && workDate.After(today),
+		Title:      body.Title,
+		Content:    body.Content,
+		Detail:     body.Detail,
+		ProjectID:  body.ProjectID,
+		AuthorID:   user.ID,
+		AssigneeID: assigneeID,
+		Kind:       kind,
+		Status:     status,
+		Priority:   priority,
+		WorkDate:   workDate,
+		DueDate:    dueDate,
+		DueRemind:  body.DueRemind,
+		// 开始提醒仅对「未来开始日期」有意义，其他情况强制关闭
+		StartRemind: body.StartRemind && workDate != nil && workDate.After(today),
 	}
 	if len(body.ParticipantIDs) > 0 {
 		var participants []model.User
@@ -300,6 +304,7 @@ func (h *WorkItemHandler) Update(c *gin.Context) {
 		return
 	}
 
+	today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local)
 	updates := map[string]any{}
 	if body.Title != "" {
 		updates["title"] = body.Title
@@ -316,6 +321,10 @@ func (h *WorkItemHandler) Update(c *gin.Context) {
 	if body.WorkDate != "" {
 		if d, err := parseDate(body.WorkDate); err == nil {
 			updates["work_date"] = d
+			// 待办任务在编辑中把开始日期排到「今天或之前」→ 保存后自动进入进行中
+			if item.Status == "todo" && !d.After(today) {
+				updates["status"] = "doing"
+			}
 		}
 	}
 	if body.DueDate != "" {
@@ -372,18 +381,43 @@ func (h *WorkItemHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
+	today := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local)
 	updates := map[string]any{"status": body.Status}
-	if body.Status == "done" {
+	switch body.Status {
+	case "done":
 		now := time.Now()
 		updates["done_at"] = &now
-	} else {
+		// 未排期的待办任务直接完成：开始日期补为今天，保证报表/统计可聚合
+		if item.WorkDate == nil {
+			updates["work_date"] = today
+		}
+		// 完成时未填截止日期：自动补为当天
+		if item.DueDate == nil {
+			updates["due_date"] = today
+		}
+	case "todo":
+		// 拖回待办 = 尚未排期：清空开始/截止日期与关联提醒
 		updates["done_at"] = nil
+		updates["work_date"] = nil
+		updates["due_date"] = nil
+		updates["due_remind"] = false
+		updates["start_remind"] = false
+	default: // doing / cancelled
+		updates["done_at"] = nil
+		// 待办任务开始推进：开始日期补为今天
+		if body.Status == "doing" && item.WorkDate == nil {
+			updates["work_date"] = today
+		}
+		// 已完成 → 进行中：截止日期已到期（≤今天）则清空（重开后旧截止日无意义）；未来截止日期保留
+		if body.Status == "doing" && item.Status == "done" && item.DueDate != nil && !item.DueDate.After(today) {
+			updates["due_date"] = nil
+		}
 	}
 	if err := h.db.Model(&item).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	h.db.Preload("Project").Preload("Author").First(&item, item.ID)
+	h.db.Preload("Project").Preload("Author").Preload("Assignee").Preload("Participants").First(&item, item.ID)
 	c.JSON(http.StatusOK, item)
 }
 

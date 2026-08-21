@@ -68,7 +68,8 @@ export interface WorkItem {
   kind: 'plan' | 'work'
   status: 'todo' | 'doing' | 'done' | 'cancelled'
   priority: 'high' | 'medium' | 'low'
-  work_date: string
+  // 开始日期；待办（未排期）任务为 null
+  work_date: string | null
   due_date?: string | null
   // 到期提醒：勾选后截止日期当天 18:00 提醒作者与负责人
   due_remind?: boolean

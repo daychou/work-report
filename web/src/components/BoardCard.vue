@@ -183,7 +183,7 @@ onUnmounted(() => document.removeEventListener('click', closeStatusMenu))
           💬 {{ item.comment_count }}
         </span>
         <span v-if="dueInfo" :class="dueInfo.cls">{{ dueInfo.text }}</span>
-        <span v-else class="text-slate-500 dark:text-[#9aa0ad]">{{ dayjs(item.work_date).format('MM-DD') }}</span>
+        <span v-else class="text-slate-500 dark:text-[#9aa0ad]">{{ item.work_date ? dayjs(item.work_date).format('MM-DD') : '待定' }}</span>
       </div>
     </div>
 

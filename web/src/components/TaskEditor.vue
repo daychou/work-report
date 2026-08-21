@@ -27,25 +27,50 @@ const priority = ref<'high' | 'medium' | 'low'>('medium')
 const completed = ref(true) // 已完成勾选：勾选=done，取消=doing
 const assigneeId = ref<number | null>(null)
 const participantIds = ref<number[]>([])
-const workDate = ref<number>(Date.now())
-const dueDate = ref<number>(Date.now())
+const workDate = ref<number | null>(Date.now())
+const dueDate = ref<number | null>(Date.now())
+const isTodo = ref(false) // 待办勾选：尚未排期（清空开始/截止日期），仅新建时可勾
 const dueRemind = ref(true) // 到期提醒：勾选后截止日当天 18:00 提醒（新建默认勾选）
 const startRemind = ref(false) // 开始提醒：开始日期为未来时可勾选，当天 12:00 提醒
 const saving = ref(false)
 
 const isEdit = computed(() => !!props.editItem)
 // 开始日期为未来时展示「开始提醒」勾选项
-const isFutureStart = computed(() => dayjs(workDate.value).isAfter(dayjs(), 'day'))
+const isFutureStart = computed(() => workDate.value != null && dayjs(workDate.value).isAfter(dayjs(), 'day'))
+// 编辑待办任务时：开始日期排到今天或之前，保存后将自动进入「进行中」（后端联动）
+const willStartOnSave = computed(
+  () =>
+    isEdit.value &&
+    props.editItem?.status === 'todo' &&
+    workDate.value != null &&
+    !dayjs(workDate.value).isAfter(dayjs(), 'day'),
+)
 
-// 新建时：开始日期选未来 → 默认勾选开始提醒；选回今天/过去 → 关闭
+// 「待办」勾选：清空开始/截止日期表示尚未排期；取消勾选恢复默认（今天 + 已完成勾选）
+watch(isTodo, (v) => {
+  if (v) {
+    workDate.value = null
+    dueDate.value = null
+    completed.value = false
+    startRemind.value = false
+  } else {
+    workDate.value = Date.now()
+    dueDate.value = Date.now()
+    completed.value = true
+  }
+})
+
+// 新建时：开始日期选未来 → 默认勾选开始提醒，且任务将进入「待办」（取消已完成）；选回今天/过去 → 恢复
 watch(workDate, (v) => {
-  if (isEdit.value) return
-  startRemind.value = dayjs(v).isAfter(dayjs(), 'day')
+  if (isEdit.value || v == null) return
+  const future = dayjs(v).isAfter(dayjs(), 'day')
+  startRemind.value = future
+  if (future) completed.value = false
 })
 
 // 新建时：截止日期选未来 → 任务尚未到推进节点，主动取消「已完成」默认勾选
 watch(dueDate, (v) => {
-  if (isEdit.value) return
+  if (isEdit.value || v == null) return
   if (dayjs(v).isAfter(dayjs(), 'day')) completed.value = false
 })
 
@@ -65,10 +90,11 @@ watch(
       completed.value = it.status === 'done'
       assigneeId.value = it.assignee_id ?? it.author_id
       participantIds.value = (it.participants || []).map((u) => u.id)
-      workDate.value = dayjs(it.work_date).valueOf()
-      dueDate.value = it.due_date ? dayjs(it.due_date).valueOf() : Date.now()
+      workDate.value = it.work_date ? dayjs(it.work_date).valueOf() : null
+      dueDate.value = it.due_date ? dayjs(it.due_date).valueOf() : null
       dueRemind.value = !!it.due_remind
       startRemind.value = !!it.start_remind
+      isTodo.value = false // 待办勾选仅新建时可用；编辑待办任务时日期为空即可排期
     } else {
       title.value = ''
       content.value = ''
@@ -83,6 +109,7 @@ watch(
       dueDate.value = Date.now()
       dueRemind.value = true
       startRemind.value = false
+      isTodo.value = false
     }
   },
 )
@@ -127,16 +154,17 @@ async function save() {
       detail: hasDetail.value && !isEmptyRichText(detail.value) ? detail.value : '',
       project_id: projectId.value,
       priority: priority.value,
-      work_date: dayjs(workDate.value).format('YYYY-MM-DD'),
-      due_date: dayjs(dueDate.value).format('YYYY-MM-DD'),
-      due_remind: dueRemind.value,
+      work_date: workDate.value ? dayjs(workDate.value).format('YYYY-MM-DD') : '',
+      due_date: dueDate.value ? dayjs(dueDate.value).format('YYYY-MM-DD') : '',
+      due_remind: !isTodo.value && dueRemind.value,
       // 开始提醒仅当开始日期为未来时生效（后端创建时同样校验）
-      start_remind: isFutureStart.value && startRemind.value,
+      start_remind: !isTodo.value && isFutureStart.value && startRemind.value,
       assignee_id: assigneeId.value ?? undefined,
       participant_ids: participantIds.value,
     }
     if (!isEdit.value) {
-      payload.status = completed.value ? 'done' : 'doing'
+      // 未排期（待办勾选）或未来开始的任务进入「待办」；否则按「已完成」勾选
+      payload.status = isTodo.value || isFutureStart.value ? 'todo' : completed.value ? 'done' : 'doing'
     }
     const { data } = isEdit.value
       ? await api.updateWorkItem(props.editItem!.id, payload)
@@ -226,29 +254,39 @@ async function save() {
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="mb-1 block text-xs font-medium text-slate-500">开始日期</label>
-          <n-date-picker v-model:value="workDate" type="date" class="w-full" />
+          <n-date-picker v-model:value="workDate" type="date" class="w-full" :disabled="isTodo" placeholder="待定" />
+          <p v-if="willStartOnSave" class="mt-1 text-xs text-amber-500">保存后任务将进入「进行中」</p>
         </div>
         <div>
           <label class="mb-1 block text-xs font-medium text-slate-500">截止日期</label>
-          <n-date-picker v-model:value="dueDate" type="date" class="w-full" />
+          <n-date-picker v-model:value="dueDate" type="date" class="w-full" :disabled="isTodo" placeholder="待定" />
         </div>
       </div>
 
       <!-- 勾选项合并为一行，减少纵向占用 -->
       <div class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-[#171a20]">
-        <n-checkbox v-model:checked="dueRemind">
-          <span class="text-sm">到期提醒</span>
-          <span class="ml-1 text-xs text-slate-400">截止日当天 18:00 提醒（站内通知，绑定飞书后同步推送）</span>
+        <!-- 待办：尚未排期（清空日期），日后再定开始/截止时间 -->
+        <n-checkbox v-if="!isEdit" v-model:checked="isTodo">
+          <span class="text-sm">待办</span>
+          <span class="ml-1 text-xs text-slate-400">还没决定什么时候开始，日后再排期</span>
         </n-checkbox>
-        <!-- 开始日期为未来时出现：开始当天 12:00 提醒 -->
-        <n-checkbox v-if="isFutureStart" v-model:checked="startRemind">
-          <span class="text-sm">开始提醒</span>
-          <span class="ml-1 text-xs text-slate-400">开始日当天 12:00 提醒</span>
-        </n-checkbox>
-        <n-checkbox v-if="!isEdit" v-model:checked="completed">
-          <span class="text-sm">已完成</span>
-          <span class="ml-1 text-xs text-slate-400">取消勾选后任务将进入「进行中」</span>
-        </n-checkbox>
+        <template v-if="!isTodo">
+          <n-checkbox v-model:checked="dueRemind">
+            <span class="text-sm">到期提醒</span>
+            <span class="ml-1 text-xs text-slate-400">截止日当天 18:00 提醒（站内通知，绑定飞书后同步推送）</span>
+          </n-checkbox>
+          <!-- 开始日期为未来时出现：开始当天 12:00 提醒 -->
+          <n-checkbox v-if="isFutureStart" v-model:checked="startRemind">
+            <span class="text-sm">开始提醒</span>
+            <span class="ml-1 text-xs text-slate-400">开始日当天 12:00 提醒</span>
+          </n-checkbox>
+          <n-checkbox v-if="!isEdit" v-model:checked="completed" :disabled="isFutureStart">
+            <span class="text-sm">已完成</span>
+            <span class="ml-1 text-xs text-slate-400">
+              {{ isFutureStart ? '未来开始的任务将进入「待办」，开始当天自动转入「进行中」' : '取消勾选后任务将进入「进行中」' }}
+            </span>
+          </n-checkbox>
+        </template>
       </div>
 
       <div class="flex justify-end gap-2">

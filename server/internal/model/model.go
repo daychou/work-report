@@ -84,7 +84,8 @@ type WorkItem struct {
 	Kind         string         `gorm:"size:16;not null;index" json:"kind"`                // plan / work
 	Status       string         `gorm:"size:16;not null;default:todo;index" json:"status"` // todo / doing / done / cancelled
 	Priority     string         `gorm:"size:8;default:medium" json:"priority"`             // high / medium / low
-	WorkDate     time.Time      `gorm:"type:date;not null;index" json:"work_date"`         // 开始日期（工作发生日，日报/周报聚合依据）
+	// WorkDate 开始日期（工作发生日，日报/周报聚合依据）；待办任务可为 NULL，表示尚未排期
+	WorkDate     *time.Time     `gorm:"type:date;index" json:"work_date"`
 	DueDate      *time.Time     `gorm:"type:date;index" json:"due_date"`                   // 截止日期（到期提醒依据）
 	// DueRemind 勾选后：截止日期当天 18:00 平台内 + 飞书提醒作者与负责人任务快到期
 	DueRemind bool `gorm:"default:false" json:"due_remind"`

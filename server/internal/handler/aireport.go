@@ -242,7 +242,7 @@ func (h *AIReportHandler) generate(reportID uint) {
 		Kind:       "work",
 		Status:     "done",
 		Priority:   "medium",
-		WorkDate:   now,
+		WorkDate:   &now,
 		DoneAt:     &now,
 	}
 	if err := h.db.Create(&item).Error; err != nil {
@@ -276,7 +276,12 @@ func callAI(report *model.AIReport, items []model.WorkItem) (string, error) {
 		report.DateFrom.Format("2006-01-02"), report.DateTo.Format("2006-01-02"),
 		report.User.Name, len(items))
 	for _, it := range items {
-		fmt.Fprintf(&sb, "- [%s]（项目：%s）%s\n", it.WorkDate.Format("2006-01-02"), it.Project.Name, it.Title)
+		// work_date 可空（待办未排期），取数虽按日期过滤已排除，仍兜底防空指针
+		day := "未定"
+		if it.WorkDate != nil {
+			day = it.WorkDate.Format("2006-01-02")
+		}
+		fmt.Fprintf(&sb, "- [%s]（项目：%s）%s\n", day, it.Project.Name, it.Title)
 		// 只取标题+正文（任务总结），详细内容不提交给 AI，控制数据量；
 		// 正文为富文本 HTML，喂给 AI 前转纯文本
 		if summary := service.StripHTML(strings.TrimSpace(it.Content)); summary != "" {

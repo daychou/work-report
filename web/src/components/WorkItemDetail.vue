@@ -91,7 +91,7 @@ const sanitizedDetail = computed(() =>
             </span>
             参与：{{ item.participants.map((u) => u.name).join('、') }}
           </span>
-          <span>工作日期 {{ dayjs(item.work_date).format('YYYY-MM-DD') }}</span>
+          <span>工作日期 {{ item.work_date ? dayjs(item.work_date).format('YYYY-MM-DD') : '待定' }}</span>
           <span v-if="item.due_date" :class="dayjs(item.due_date).isBefore(dayjs(), 'day') && item.status !== 'done' ? 'text-red-500' : ''">
             截止 {{ dayjs(item.due_date).format('YYYY-MM-DD') }}
           </span>

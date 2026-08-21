@@ -41,8 +41,9 @@ func main() {
 
 	feishu := notify.NewFeishuClient(cfg.Feishu.AppID, cfg.Feishu.AppSecret, cfg.Feishu.Enabled)
 
-	// 定时任务：任务按日期粒度管理——每天 18:00 扫描到期/逾期，12:00 扫描当天开始的任务；
-	// 启动后 10 秒补跑一次（18 点前/12 点前分别跳过对应扫描，防止重启丢失当天提醒，去重表保证不重复）。
+	// 定时任务：任务按日期粒度管理——每天 18:00 扫描到期/逾期，12:00 提醒当天开始的任务，
+	// 00:10 将到达开始日期的待办任务自动转入进行中；
+	// 启动后 10 秒补跑一次（18 点前/12 点前分别跳过对应扫描，迁移幂等，去重表保证提醒不重复）。
 	// 若后续任务精确到分钟，需改为分钟级扫描频率
 	c := cron.New()
 	remindJob := job.NewPlanRemindJob(db, feishu)
@@ -52,12 +53,16 @@ func main() {
 	if _, err := c.AddFunc("1 12 * * *", remindJob.RunStartRemind); err != nil {
 		log.Fatalf("add cron job: %v", err)
 	}
+	if _, err := c.AddFunc("10 0 * * *", remindJob.MigrateTodoToDoing); err != nil {
+		log.Fatalf("add cron job: %v", err)
+	}
 	c.Start()
 	defer c.Stop()
 	go func() {
 		time.Sleep(10 * time.Second)
 		remindJob.Run()
 		remindJob.RunStartRemind()
+		remindJob.MigrateTodoToDoing()
 	}()
 
 	if cfg.Server.Mode == "release" {
