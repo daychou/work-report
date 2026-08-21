@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --brand: #7c3aed;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+.dark body {
+  @apply bg-[#0b0d11] text-slate-100;
+}
+
+/* 看板列滚动条 */
+.board-scroll::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.board-scroll::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300 dark:bg-[#2b2e37];
+}
+.board-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 卡片拖拽反馈 */
+.drag-ghost {
+  opacity: 0.4;
+}
+.drag-chosen {
+  @apply ring-2 ring-violet-500/60;
+}

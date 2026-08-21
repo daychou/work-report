@@ -1,0 +1,41 @@
+# 工作汇报平台后端配置
+server:
+  port: 8080
+  # 运行模式: debug / release
+  mode: debug
+  # 前端构建产物（dist）目录：目录存在时由 Go 托管前端（SPA fallback）；
+  # 留空或目录不存在则为纯 API 模式，前端可独立部署在 Nginx（反代 /api 到本服务）
+  # 默认值：../web/dist（相对于服务启动时的工作目录）
+  static_dir: "../web/dist"
+
+database:
+  # MySQL DSN（无需预先建库，程序会自动创建 database）
+  dsn: "root:root@tcp(127.0.0.1:3306)/work_report?charset=utf8mb4&parseTime=True&loc=Local"
+
+# 平台自身会话 JWT 签名密钥（生产环境务必修改）
+jwt:
+  secret: "please-change-me-in-production"
+  # 会话有效期（小时）
+  expire_hours: 168
+
+# Casdoor 认证配置
+casdoor:
+  # 是否启用 Casdoor；关闭时走开发模式（任意用户名直接登录，仅本地开发用）
+  enabled: false
+  endpoint: "https://your-casdoor.example.com"
+  client_id: ""
+  client_secret: ""
+  organization: ""
+  application: ""
+  # 前端回调地址（Casdoor 应用里需要登记该 redirect URI）
+  redirect_uri: "http://localhost:5173/callback"
+
+# 飞书自建应用（到期提醒）
+feishu:
+  enabled: false
+  app_id: ""
+  app_secret: ""
+
+# 平台对外访问地址：飞书消息中的任务链接使用该地址，生产部署时改为 https://你的域名
+app:
+  url: "http://localhost:5173"
