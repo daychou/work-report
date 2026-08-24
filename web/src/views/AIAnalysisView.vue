@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NButton, NSelect, NDatePicker, NInput, NEmpty, NTag, NModal, useMessage } from 'naive-ui'
 import dayjs from 'dayjs'
-import { api, type AIModel, type AIReport, type User, type WorkItem } from '../api'
+import { api, type AIModel, type AIPrompt, type AIReport, type User, type WorkItem } from '../api'
 import { useAuthStore } from '../stores/auth'
 import UserAvatar from '../components/UserAvatar.vue'
 import WorkItemDetail from '../components/WorkItemDetail.vue'
@@ -11,14 +11,15 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 const auth = useAuthStore()
 const message = useMessage()
 
-// 与后端 handler.DefaultAIPrompt 保持一致，用户可改
-const DEFAULT_PROMPT = `你是一名擅长帮助技术人员撰写年度工作总结的职业总结顾问。
+// 后端无提示词数据时的兜底（正常情况由系统设置的内置提示词提供）
+const FALLBACK_PROMPT = `你是一名擅长帮助技术人员撰写工作总结的职业总结顾问。
 
-我会提供我一段时间的工作日报，请你不要简单地按照日期罗列工作，而是从全年日报中提炼我的工作成果、核心贡献、解决的问题、能力成长和明年的工作方向等。`
+我会提供我一段时间的工作日报，请你不要简单地按照日期罗列工作，而是提炼我的工作成果、核心贡献、解决的问题与能力成长。`
 
 const users = ref<User[]>([])
 const models = ref<AIModel[]>([])
 const reports = ref<AIReport[]>([])
+const prompts = ref<AIPrompt[]>([])
 
 // 生成表单
 const targetUserId = ref<number | null>(null)
@@ -28,28 +29,64 @@ const range = ref<[number, number]>([
   dayjs().endOf('week').valueOf(),
 ])
 const modelId = ref<number | null>(null)
-const extraPrompt = ref(DEFAULT_PROMPT)
+const extraPrompt = ref('')
 const creating = ref(false)
 
 const userOptions = computed(() => users.value.map((u) => ({ label: u.name, value: u.id })))
 const modelOptions = computed(() => models.value.map((m) => ({ label: `${m.name}（${m.model_id}）`, value: m.id })))
+const promptOptions = computed(() => prompts.value.map((p) => ({ label: p.name, value: p.id })))
 
-// 切换报告类型时联动默认时间范围
+// 当前文本框内容对应的主题提示词 id；用户手动改动内容后置空（下拉显示「自定义」）
+const activePromptId = ref<number | null>(null)
+
+// 按报告类型取系统设置中的默认提示词（优先内置）
+function findPromptFor(t: 'week' | 'year') {
+  return prompts.value.find((p) => p.report_type === t && p.built_in) ?? prompts.value.find((p) => p.report_type === t)
+}
+
+// 应用某个主题提示词到文本框（切换报告类型 / 手动选用共用）
+function applyPrompt(id: number | null) {
+  const p = prompts.value.find((x) => x.id === id)
+  extraPrompt.value = p?.content || FALLBACK_PROMPT
+  activePromptId.value = p?.id ?? null
+}
+
+// 切换报告类型时联动默认时间范围 + 加载对应默认提示词（覆盖文本框，临时修改不保存）
 function pickType(t: 'week' | 'year') {
   reportType.value = t
   range.value =
     t === 'week'
       ? [dayjs().startOf('week').valueOf(), dayjs().endOf('week').valueOf()]
       : [dayjs().startOf('year').valueOf(), dayjs().endOf('year').valueOf()]
+  applyPrompt(findPromptFor(t)?.id ?? null)
 }
 
+// 用户手动编辑文本框后，内容不再等于所选主题，下拉回到「自定义」态
+watch(extraPrompt, (v) => {
+  if (activePromptId.value == null) return
+  const p = prompts.value.find((x) => x.id === activePromptId.value)
+  if (!p || v !== p.content) activePromptId.value = null
+})
+
+let promptInited = false
 async function load() {
-  const [u, m, r] = await Promise.all([api.usersCached(), api.aiModelsEnabled(), api.aiReports()])
+  const [u, m, r, p] = await Promise.all([
+    api.usersCached(),
+    api.aiModelsEnabled(),
+    api.aiReports(),
+    api.aiPrompts().catch(() => ({ data: [] as AIPrompt[] })),
+  ])
   users.value = u.data
   models.value = Array.isArray(m.data) ? m.data : []
   reports.value = Array.isArray(r.data) ? r.data : []
+  prompts.value = Array.isArray(p.data) ? p.data : []
   if (!targetUserId.value) targetUserId.value = auth.user?.id ?? null
   if (!modelId.value && models.value.length) modelId.value = models.value[0].id
+  // 仅首次加载填充默认提示词，避免轮询覆盖用户正在编辑的内容
+  if (!promptInited) {
+    promptInited = true
+    applyPrompt(findPromptFor(reportType.value)?.id ?? null)
+  }
 }
 
 // 有生成中的报告时 5s 轮询（生成在后端异步执行，刷新页面不影响）
@@ -259,8 +296,25 @@ const priorityCN: Record<string, { label: string; type: 'error' | 'warning' | 'd
       </div>
 
       <div class="mt-4">
-        <label class="mb-1 block text-xs font-medium text-slate-500">额外提示词（告诉 AI 以什么角度和要求生成）</label>
-        <n-input v-model:value="extraPrompt" type="textarea" :rows="4" />
+        <div class="mb-3">
+          <label class="mb-1 block text-xs font-medium text-slate-500">提示词主题</label>
+          <div class="flex items-center gap-2">
+            <n-select
+              v-if="prompts.length"
+              :value="activePromptId"
+              :options="promptOptions"
+              placeholder="选择提示词主题"
+              class="w-64 max-w-full"
+              @update:value="applyPrompt"
+            />
+            <n-tag v-if="activePromptId === null" size="small" :bordered="false">自定义修改</n-tag>
+          </div>
+        </div>
+        <label class="mb-1 block text-xs font-medium text-slate-500">提示词内容</label>
+        <n-input v-model:value="extraPrompt" type="textarea" :rows="5" class="w-full" />
+        <p class="mt-1.5 text-xs text-slate-400">
+          选择报告类型时会自动加载对应主题；直接修改内容仅本次生效，永久修改请前往「系统设置 → AI 提示词」。
+        </p>
       </div>
 
       <div class="mt-4 flex items-center justify-end gap-3">

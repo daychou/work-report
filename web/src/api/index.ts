@@ -151,6 +151,19 @@ export interface UploadResult {
   size: number
 }
 
+// AI 分析提示词（系统设置管理，写操作仅管理员；列表登录用户可查，AI 分析页按报告类型加载默认提示词）
+export interface AIPrompt {
+  id: number
+  name: string
+  // week / year；空字符串 = 自定义主题（不联动报告类型，可在 AI 分析页手动选用）
+  report_type: 'week' | 'year' | ''
+  content: string
+  // 内置提示词（周报/年度报告）不可删除、不可变更关联类型
+  built_in: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 // AI 生成的总结报告（后端异步生成，前端轮询状态）
 export interface AIReport {
   id: number
@@ -284,6 +297,14 @@ export const api = {
   createAIModel: (data: Partial<AIModel>) => http.post<AIModel>('/ai-models', data),
   updateAIModel: (id: number, data: Partial<AIModel>) => http.put<AIModel>(`/ai-models/${id}`, data),
   deleteAIModel: (id: number) => http.delete(`/ai-models/${id}`),
+
+  // AI 提示词（管理操作仅管理员；列表所有登录用户可查）
+  aiPrompts: () => http.get<AIPrompt[]>('/ai-prompts'),
+  createAIPrompt: (data: { name: string; report_type: string; content: string }) =>
+    http.post<AIPrompt>('/ai-prompts', data),
+  updateAIPrompt: (id: number, data: { name: string; report_type: string; content: string }) =>
+    http.put<AIPrompt>(`/ai-prompts/${id}`, data),
+  deleteAIPrompt: (id: number) => http.delete(`/ai-prompts/${id}`),
 
   // AI 分析报告
   aiReports: () => http.get<AIReport[]>('/ai-reports'),

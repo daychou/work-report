@@ -96,5 +96,28 @@ func Seed(db *gorm.DB) error {
 			return err
 		}
 	}
+
+	// 内置 AI 提示词：周报 / 年度报告（AI 分析页按报告类型加载默认提示词）。
+	// 仅不存在时创建，管理员在系统设置中修改的内容不会被覆盖
+	for _, p := range []model.AIPrompt{
+		{
+			Name:       "周报",
+			ReportType: "week",
+			BuiltIn:    true,
+			Content: "你是一名擅长帮助技术人员撰写周报的职业总结顾问。\n\n" +
+				"我会提供我本周的工作日报，请你不要简单地按照日期罗列工作，而是尽量要体现出数据，提炼本周的工作成果、核心贡献、解决的问题与能力成长等。",
+		},
+		{
+			Name:       "年度报告",
+			ReportType: "year",
+			BuiltIn:    true,
+			Content: "你是一名擅长帮助技术人员撰写年度工作总结的职业总结顾问。\n\n" +
+				"我会提供我这一年的工作日报，请你不要简单地按照日期罗列工作，而是尽量要体现出数据，从全年日报中提炼我的工作成果、核心贡献、解决的问题、能力成长等。",
+		},
+	} {
+		if err := db.Where("report_type = ? AND built_in = ?", p.ReportType, true).FirstOrCreate(&p).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }

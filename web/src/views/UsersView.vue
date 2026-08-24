@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NModal, NInput, NSelect, NCheckbox, NSwitch, NEmpty, NTag, useMessage } from 'naive-ui'
 import dayjs from 'dayjs'
-import { api, invalidateUsersCache, type AIModel, type OSSConfig, type Role, type User } from '../api'
+import { api, invalidateUsersCache, type AIModel, type AIPrompt, type OSSConfig, type Role, type User } from '../api'
 import { useAuthStore } from '../stores/auth'
 import UserAvatar from '../components/UserAvatar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -14,9 +14,9 @@ const message = useMessage()
 const route = useRoute()
 const router = useRouter()
 
-// 标签页：成员 / 角色 / 项目 / AI 模型 / 附件存储（支持 ?tab= 深链接）
-type TabKey = 'members' | 'roles' | 'projects' | 'ai' | 'oss'
-const tab = ref<TabKey>(['members', 'roles', 'projects', 'ai', 'oss'].includes(route.query.tab as string) ? (route.query.tab as TabKey) : 'members')
+// 标签页：成员 / 角色 / 项目 / AI 模型 / AI 提示词 / 附件存储（支持 ?tab= 深链接）
+type TabKey = 'members' | 'roles' | 'projects' | 'ai' | 'prompts' | 'oss'
+const tab = ref<TabKey>(['members', 'roles', 'projects', 'ai', 'prompts', 'oss'].includes(route.query.tab as string) ? (route.query.tab as TabKey) : 'members')
 watch(tab, (v) => {
   router.replace({ query: v === 'members' ? {} : { tab: v } })
 })
@@ -24,6 +24,7 @@ watch(tab, (v) => {
 const users = ref<User[]>([])
 const roles = ref<Role[]>([])
 const aiModels = ref<AIModel[]>([])
+const aiPrompts = ref<AIPrompt[]>([])
 const loading = ref(false)
 
 const showCreate = ref(false)
@@ -48,15 +49,17 @@ function roleName(u: User) {
 async function load() {
   loading.value = true
   try {
-    const [u, r, m] = await Promise.all([
+    const [u, r, m, p] = await Promise.all([
       api.users(),
       // 后端未升级（无 roles 接口）时回退空数组，保证成员编辑等基础功能可用
       api.roles().catch(() => ({ data: [] as Role[] })),
       api.aiModels().catch(() => ({ data: [] as AIModel[] })),
+      api.aiPrompts().catch(() => ({ data: [] as AIPrompt[] })),
     ])
     users.value = Array.isArray(u.data) ? u.data : []
     roles.value = Array.isArray(r.data) ? r.data : []
     aiModels.value = Array.isArray(m.data) ? m.data : []
+    aiPrompts.value = Array.isArray(p.data) ? p.data : []
   } finally {
     loading.value = false
   }
@@ -289,6 +292,91 @@ async function toggleAIEnabled(m: AIModel, enabled: boolean) {
   }
 }
 
+// ---- AI 提示词管理：内置周报/年度报告两条（可改内容，不可删、不可改关联类型），可新增自定义主题 ----
+const showPromptEditor = ref(false)
+const promptEditTarget = ref<AIPrompt | null>(null) // null = 新建
+const promptName = ref('')
+const promptReportType = ref<'week' | 'year' | ''>('')
+const promptContent = ref('')
+
+const promptTypeOptions = [
+  { label: '不关联（自定义主题）', value: '' },
+  { label: '周报', value: 'week' },
+  { label: '年度报告', value: 'year' },
+]
+
+function promptTypeLabel(t: string) {
+  if (t === 'week') return { text: '周报', type: 'info' as const }
+  if (t === 'year') return { text: '年度报告', type: 'warning' as const }
+  return { text: '自定义主题', type: 'default' as const }
+}
+
+function openPromptCreate() {
+  promptEditTarget.value = null
+  promptName.value = ''
+  promptReportType.value = ''
+  promptContent.value = ''
+  showPromptEditor.value = true
+}
+
+function openPromptEdit(p: AIPrompt) {
+  promptEditTarget.value = p
+  promptName.value = p.name
+  promptReportType.value = p.report_type
+  promptContent.value = p.content
+  showPromptEditor.value = true
+}
+
+async function savePrompt() {
+  if (!promptName.value.trim() || !promptContent.value.trim()) return
+  saving.value = true
+  try {
+    const payload = {
+      name: promptName.value.trim(),
+      report_type: promptReportType.value,
+      content: promptContent.value,
+    }
+    if (promptEditTarget.value) {
+      await api.updateAIPrompt(promptEditTarget.value.id, payload)
+    } else {
+      await api.createAIPrompt(payload)
+    }
+    message.success('已保存')
+    showPromptEditor.value = false
+    load()
+  } catch (e: any) {
+    message.error(e.response?.data?.error || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+const confirmDeletePrompt = ref<{ show: boolean; target: AIPrompt | null; loading: boolean }>({
+  show: false,
+  target: null,
+  loading: false,
+})
+
+function openDeletePrompt(p: AIPrompt) {
+  confirmDeletePrompt.value = { show: true, target: p, loading: false }
+}
+
+async function doDeletePrompt() {
+  const target = confirmDeletePrompt.value.target
+  if (!target) return
+  confirmDeletePrompt.value.loading = true
+  try {
+    await api.deleteAIPrompt(target.id)
+    message.success('提示词已删除')
+    confirmDeletePrompt.value.show = false
+    load()
+  } catch (e: any) {
+    message.error(e.response?.data?.error || '删除失败')
+  } finally {
+    confirmDeletePrompt.value.loading = false
+  }
+}
+
 // ---- 附件存储（阿里云 OSS）配置：单行配置，任务富文本的图片/附件经服务端中继上传 ----
 const ossForm = ref<OSSConfig>({ endpoint: '', bucket: '', access_key_id: '', access_key_secret: '', dir: 'work-report', domain: '' })
 const ossLoading = ref(false)
@@ -357,7 +445,7 @@ async function doDeleteAI() {
     <h2 class="mb-1 text-lg font-bold">系统设置</h2>
     <p class="mb-4 text-xs text-slate-400">仅管理员可见。权限由平台内部角色决定，统一认证（Casdoor）仅用于登录。</p>
 
-    <!-- 标签页：成员 / 角色 / 项目 / AI 模型 / 附件存储 -->
+    <!-- 标签页：成员 / 角色 / 项目 / AI 模型 / AI 提示词 / 附件存储 -->
     <div class="mb-4 flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-[#171a20] w-fit">
       <button
         v-for="t in [
@@ -365,6 +453,7 @@ async function doDeleteAI() {
           { key: 'roles', label: '角色管理' },
           { key: 'projects', label: '项目管理' },
           { key: 'ai', label: 'AI 模型' },
+          { key: 'prompts', label: 'AI 提示词' },
           { key: 'oss', label: '附件存储' },
         ]"
         :key="t.key"
@@ -477,6 +566,48 @@ async function doDeleteAI() {
         </div>
       </div>
       <n-empty v-else :description="loading ? '加载中…' : '暂无 AI 模型'" class="py-16" />
+    </template>
+
+    <!-- AI 提示词管理 -->
+    <template v-else-if="tab === 'prompts'">
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-500">AI 提示词（{{ aiPrompts.length }}）</h3>
+        <n-button v-if="isAdmin" type="primary" size="small" @click="openPromptCreate">+ 新增提示词</n-button>
+      </div>
+      <p class="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400 dark:bg-[#171a20]">
+        AI 分析页选择「周报 / 年度报告」时自动加载对应类型的提示词作为默认值；
+        关联类型为空的自定义主题可在 AI 分析页手动选用。内置提示词可编辑内容，但不可删除、不可变更关联类型。
+      </p>
+
+      <div v-if="aiPrompts.length" class="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#242730] dark:bg-[#12151b]">
+        <div
+          v-for="p in aiPrompts"
+          :key="p.id"
+          class="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 dark:border-[#1d212b]"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold">{{ p.name }}</span>
+              <n-tag size="tiny" :bordered="false" :type="promptTypeLabel(p.report_type).type">
+                {{ promptTypeLabel(p.report_type).text }}
+              </n-tag>
+              <n-tag v-if="p.built_in" size="tiny" :bordered="false">内置</n-tag>
+            </div>
+            <div class="mt-0.5 truncate text-xs text-slate-400">{{ p.content }}</div>
+          </div>
+          <div v-if="isAdmin" class="flex shrink-0 gap-1">
+            <button class="rounded px-2 py-1 text-xs text-violet-500 hover:bg-violet-500/10" @click="openPromptEdit(p)">编辑</button>
+            <button
+              v-if="!p.built_in"
+              class="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+              @click="openDeletePrompt(p)"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+      <n-empty v-else :description="loading ? '加载中…' : '暂无提示词'" class="py-16" />
     </template>
 
     <!-- 角色管理 -->
@@ -698,6 +829,56 @@ async function doDeleteAI() {
       :danger="true"
       :loading="confirmDeleteAI.loading"
       @confirm="doDeleteAI"
+    />
+
+    <!-- AI 提示词新建 / 编辑 -->
+    <n-modal
+      :show="showPromptEditor"
+      preset="card"
+      :title="promptEditTarget ? '编辑提示词' : '新增提示词'"
+      style="width: 560px"
+      @update:show="showPromptEditor = false"
+    >
+      <div class="flex flex-col gap-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-500">主题名称 *</label>
+            <n-input v-model:value="promptName" placeholder="如：周报、季度总结" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-500">关联报告类型</label>
+            <n-select
+              v-model:value="promptReportType"
+              :options="promptTypeOptions"
+              :disabled="!!promptEditTarget?.built_in"
+            />
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-slate-500">提示词内容 *</label>
+          <n-input v-model:value="promptContent" type="textarea" :rows="8" placeholder="告诉 AI 以什么角度和要求生成报告" />
+        </div>
+        <p v-if="promptEditTarget?.built_in" class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400 dark:bg-[#171a20]">
+          内置提示词不可变更关联类型、不可删除，保证 AI 分析页按报告类型联动时始终有默认值。
+        </p>
+        <p v-else class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400 dark:bg-[#171a20]">
+          关联「周报 / 年度报告」后，AI 分析页选择对应报告类型时自动加载该提示词；不关联的自定义主题可在 AI 分析页手动选用。
+        </p>
+        <div class="flex justify-end gap-2">
+          <n-button @click="showPromptEditor = false">取消</n-button>
+          <n-button type="primary" :loading="saving" :disabled="!promptName.trim() || !promptContent.trim()" @click="savePrompt">保存</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <ConfirmDialog
+      v-model:show="confirmDeletePrompt.show"
+      title="删除提示词"
+      :content="`确定删除提示词「${confirmDeletePrompt.target?.name}」吗？该操作不可恢复。`"
+      positive-text="删除"
+      :danger="true"
+      :loading="confirmDeletePrompt.loading"
+      @confirm="doDeletePrompt"
     />
   </div>
 </template>

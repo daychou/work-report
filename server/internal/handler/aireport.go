@@ -26,8 +26,21 @@ func NewAIReportHandler(db *gorm.DB) *AIReportHandler {
 	return &AIReportHandler{db: db}
 }
 
-// DefaultAIPrompt 额外提示词的默认值（前端表单也内置同一份，用户可改）
-const DefaultAIPrompt = "你是一名擅长帮助技术人员撰写年度工作总结的职业总结顾问。\n\n我会提供我一段时间的工作日报，请你不要简单地按照日期罗列工作，而是从全年日报中提炼我的工作成果、核心贡献、解决的问题、能力成长和明年的工作方向等。"
+// DefaultAIPrompt 提示词最终兜底：正常由系统设置中的内置提示词（周报/年度报告）提供，
+// 仅当数据库中无对应类型的提示词配置时使用
+const DefaultAIPrompt = "你是一名擅长帮助技术人员撰写工作总结的职业总结顾问。\n\n我会提供我一段时间的工作日报，请你不要简单地按照日期罗列工作，而是提炼我的工作成果、核心贡献、解决的问题与能力成长。"
+
+// defaultPrompt 按报告类型取系统设置中的默认提示词（优先内置），无配置时回退到内置常量
+func (h *AIReportHandler) defaultPrompt(reportType string) string {
+	var p model.AIPrompt
+	if err := h.db.Where("report_type = ?", reportType).
+		Order("built_in desc, id asc").First(&p).Error; err == nil {
+		if content := strings.TrimSpace(p.Content); content != "" {
+			return content
+		}
+	}
+	return DefaultAIPrompt
+}
 
 // Create 创建 AI 报告生成任务（异步执行，前端轮询状态；刷新页面不影响生成）
 func (h *AIReportHandler) Create(c *gin.Context) {
@@ -220,7 +233,13 @@ func (h *AIReportHandler) generate(reportID uint) {
 		return
 	}
 
-	result, err := callAI(&report, items)
+	// 提示词：优先用提交时携带的自定义提示词；为空则按报告类型取系统设置的默认提示词
+	prompt := strings.TrimSpace(report.ExtraPrompt)
+	if prompt == "" {
+		prompt = h.defaultPrompt(report.ReportType)
+	}
+
+	result, err := callAI(&report, items, prompt)
 	if err != nil {
 		fail(err)
 		return
@@ -258,12 +277,7 @@ func (h *AIReportHandler) generate(reportID uint) {
 }
 
 // callAI 调用 OpenAI 兼容的 chat completions 接口（DeepSeek 等）
-func callAI(report *model.AIReport, items []model.WorkItem) (string, error) {
-	systemPrompt := strings.TrimSpace(report.ExtraPrompt)
-	if systemPrompt == "" {
-		systemPrompt = DefaultAIPrompt
-	}
-
+func callAI(report *model.AIReport, items []model.WorkItem, systemPrompt string) (string, error) {
 	var sb strings.Builder
 	typeName := "周报"
 	extraReq := "最后请给出下周的工作计划建议。"

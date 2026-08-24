@@ -164,6 +164,25 @@ type AIModel struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
+// AIPrompt AI 分析提示词（系统设置中管理，写操作仅管理员；列表登录用户可查）。
+// 内置周报（week）/ 年度报告（year）两条：AI 分析页按报告类型加载对应默认提示词；
+// 内置提示词可编辑名称与内容，但不可删除、不可变更关联类型，保证类型联动始终有默认值。
+// ReportType 为空表示自定义主题，不联动报告类型，可在 AI 分析页手动选用。
+type AIPrompt struct {
+	ID         uint           `gorm:"primaryKey" json:"id"`
+	Name       string         `gorm:"size:64;not null" json:"name"`     // 主题名，如 周报
+	ReportType string         `gorm:"size:16;index" json:"report_type"` // week / year；空 = 自定义主题
+	Content    string         `gorm:"type:text;not null" json:"content"`
+	BuiltIn    bool           `gorm:"default:false" json:"built_in"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// TableName 显式指定表名：GORM 命名转换会把 "AIPrompt" 中的 "IP" 当作常见缩写词处理，
+// 默认会生成 a_iprompts，这里固定为 ai_prompts
+func (AIPrompt) TableName() string { return "ai_prompts" }
+
 // OSSConfig 阿里云 OSS 配置（系统设置中管理，仅管理员可见/可写；全表仅一行）。
 // 任务富文本中的图片/附件经服务端中继上传到该 Bucket，
 // Bucket 需公共读（或配置自定义域名），否则前端无法展示/下载
@@ -215,6 +234,7 @@ func All() []any {
 		&WorkItemParticipant{},
 		&AIModel{},
 		&AIReport{},
+		&AIPrompt{},
 		&OSSConfig{},
 	}
 }

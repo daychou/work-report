@@ -82,6 +82,7 @@ func main() {
 	notifyH := handler.NewNotificationHandler(db)
 	aiModelH := handler.NewAIModelHandler(db)
 	aiReportH := handler.NewAIReportHandler(db)
+	aiPromptH := handler.NewAIPromptHandler(db)
 	ossH := handler.NewOSSHandler(db)
 
 	api := r.Group("/api")
@@ -114,6 +115,12 @@ func main() {
 		authed.POST("/ai-models", aiModelH.Create)
 		authed.PUT("/ai-models/:id", aiModelH.Update)
 		authed.DELETE("/ai-models/:id", aiModelH.Delete)
+
+	// AI 提示词：列表登录用户可查（AI 分析页按报告类型加载默认提示词）；管理操作仅管理员
+	authed.GET("/ai-prompts", aiPromptH.List)
+	authed.POST("/ai-prompts", aiPromptH.Create)
+	authed.PUT("/ai-prompts/:id", aiPromptH.Update)
+	authed.DELETE("/ai-prompts/:id", aiPromptH.Delete)
 
 	// AI 分析报告：创建后后端异步生成，前端轮询状态
 	authed.GET("/ai-reports", aiReportH.List)
