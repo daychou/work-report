@@ -168,12 +168,8 @@ func (j *PlanRemindJob) notifyAuthorAndAssignee(item *model.WorkItem, notifType,
 		if err := j.db.Create(&n).Error; err != nil {
 			log.Printf("[remind] create %s notification failed: %v", notifType, err)
 		}
-		if j.feishu.Enabled() && u.FeishuOpenID != "" {
-			text := fmt.Sprintf("%s\n%s", title, content)
-			if err := j.feishu.SendText(u.FeishuOpenID, text); err != nil {
-				log.Printf("[remind] feishu send to %s failed: %v", u.Name, err)
-			}
-		}
+		text := fmt.Sprintf("%s\n%s", title, content)
+		j.sendFeishu(item.ID, notifType, u, text)
 	}
 }
 
@@ -209,11 +205,26 @@ func (j *PlanRemindJob) notify(item model.WorkItem, kind string) {
 			log.Printf("[remind] create notification failed: %v", err)
 		}
 
-		if j.feishu.Enabled() && u.FeishuOpenID != "" {
-			text := fmt.Sprintf("%s\n%s", title, content)
-			if err := j.feishu.SendText(u.FeishuOpenID, text); err != nil {
-				log.Printf("[remind] feishu send to %s failed: %v", u.Name, err)
-			}
-		}
+		text := fmt.Sprintf("%s\n%s", title, content)
+		j.sendFeishu(item.ID, "plan_"+kind, u, text)
 	}
+}
+
+// sendFeishu 发送任务飞书通知，并记录最终结果以便排查通知问题。
+func (j *PlanRemindJob) sendFeishu(workItemID uint, notifType string, user model.User, text string) {
+	if j.feishu == nil || !j.feishu.Enabled() || user.FeishuOpenID == "" {
+		return
+	}
+
+	if err := j.feishu.SendText(user.FeishuOpenID, text); err != nil {
+		log.Printf(
+			"[remind] feishu send failed: work_item_id=%d notification_type=%s user_id=%d user=%q error=%v",
+			workItemID, notifType, user.ID, user.Name, err,
+		)
+		return
+	}
+	log.Printf(
+		"[remind] feishu send succeeded: work_item_id=%d notification_type=%s user_id=%d user=%q",
+		workItemID, notifType, user.ID, user.Name,
+	)
 }
