@@ -1,34 +1,7 @@
 import axios from 'axios'
+import type { Notification, Project, Role, User, UserAPIKey, WorkItem } from '@work-report/shared'
 
-export interface Role {
-  id: number
-  name: string
-  description: string
-  // 管理员角色：拥有系统设置与全部数据权限
-  is_admin: boolean
-  // 内置角色不可删除、不可变更权限标识
-  built_in: boolean
-  created_at: string
-  // 角色下成员数（列表接口返回）
-  member_count?: number
-}
-
-export interface User {
-  id: number
-  casdoor_id: string
-  name: string
-  avatar: string
-  email: string
-  feishu_open_id: string
-  is_admin: boolean
-  role_id?: number | null
-  role?: Role | null
-  // 为 true 时登录后强制跳转到修改密码页
-  must_change_password?: boolean
-  created_at: string
-  // 非 0 表示当前会话是管理员模拟该用户身份
-  impersonated_by?: number
-}
+export type { Notification, Project, Role, User, UserAPIKey, WorkItem } from '@work-report/shared'
 
 export interface Comment {
   id: number
@@ -38,60 +11,6 @@ export interface Comment {
   author_id: number
   author: User
   content: string
-  created_at: string
-}
-
-export interface Project {
-  id: number
-  name: string
-  description: string
-  owner_id: number
-  owner: User
-  status: string
-  created_at: string
-}
-
-export interface WorkItem {
-  id: number
-  title: string
-  // 正文：任务总结（AI 分析与报表导出只取标题+正文）
-  content: string
-  // 详细内容：可选的第二层内容（细节/截图/日志），仅详情页展示，不提交给 AI
-  detail?: string
-  project_id: number
-  project: Project
-  author_id: number
-  author: User
-  assignee_id?: number | null
-  assignee?: User | null
-  participants?: User[]
-  kind: 'plan' | 'work'
-  status: 'todo' | 'doing' | 'done' | 'cancelled'
-  priority: 'high' | 'medium' | 'low'
-  // 开始日期；待办（未排期）任务为 null
-  work_date: string | null
-  due_date?: string | null
-  // 到期提醒：勾选后截止日期当天 18:00 提醒作者与负责人
-  due_remind?: boolean
-  // 开始提醒：勾选后开始日期当天 12:00 提醒作者与负责人（仅开始日期为未来时可勾选）
-  start_remind?: boolean
-  done_at?: string | null
-  created_at: string
-  // 评论数（列表接口统计返回，看板卡片展示用）
-  comment_count?: number
-}
-
-export interface Notification {
-  id: number
-  user_id: number
-  work_item_id?: number
-  work_item?: WorkItem
-  // 提及类通知对应的评论，用于跳转后定位闪烁
-  comment_id?: number
-  type: string
-  title: string
-  content: string
-  read: boolean
   created_at: string
 }
 
@@ -229,6 +148,12 @@ export const api = {
     http.post<User>('/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
   me: () => http.get<User>('/auth/me'),
   updateMe: (data: { feishu_open_id?: string; avatar?: string }) => http.put<User>('/auth/me', data),
+
+  // 个人 API Key（完整 key 仅创建响应返回一次）
+  apiKeys: () => http.get<UserAPIKey[]>('/api-keys'),
+  createAPIKey: (data: { name: string; expires_at?: string }) =>
+    http.post<UserAPIKey & { key: string }>('/api-keys', data),
+  deleteAPIKey: (id: number) => http.delete(`/api-keys/${id}`),
 
   // users & projects
   users: () => http.get<User[]>('/users'),

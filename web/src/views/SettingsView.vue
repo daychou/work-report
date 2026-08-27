@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, NInput, useMessage } from 'naive-ui'
 import { api, invalidateUsersCache } from '../api'
 import { useAuthStore } from '../stores/auth'
+import ApiKeyManager from '../components/ApiKeyManager.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 
 const auth = useAuthStore()
@@ -62,7 +63,7 @@ async function savePassword() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-xl">
+  <div class="mx-auto max-w-3xl">
     <h2 class="mb-5 text-lg font-bold">个人设置</h2>
 
     <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-[#242730] dark:bg-[#12151b]">
@@ -116,6 +117,14 @@ async function savePassword() {
           </n-button>
         </div>
       </div>
+    </div>
+
+    <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-5 dark:border-[#242730] dark:bg-[#12151b]">
+      <h3 class="mb-1 text-sm font-bold">桌面客户端与 API Key</h3>
+      <p class="mb-4 text-xs leading-5 text-slate-400">
+        管理供桌面客户端和外部 API 集成使用的个人访问密钥。
+      </p>
+      <ApiKeyManager />
     </div>
   </div>
 </template>

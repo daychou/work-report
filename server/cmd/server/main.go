@@ -84,6 +84,7 @@ func main() {
 	aiReportH := handler.NewAIReportHandler(db)
 	aiPromptH := handler.NewAIPromptHandler(db)
 	ossH := handler.NewOSSHandler(db)
+	apiKeyH := handler.NewAPIKeyHandler(db)
 
 	api := r.Group("/api")
 	{
@@ -102,39 +103,43 @@ func main() {
 			authed.GET("/users", handler.ListUsers(db))
 			authed.POST("/users", userH.Create)
 			authed.PUT("/users/:id", userH.Update)
-			authed.POST("/users/:id/impersonate", userH.Impersonate)
+			authed.POST("/users/:id/impersonate", middleware.SessionOnly(), userH.Impersonate)
 
-		authed.GET("/roles", roleH.List)
-		authed.POST("/roles", roleH.Create)
-		authed.PUT("/roles/:id", roleH.Update)
-		authed.DELETE("/roles/:id", roleH.Delete)
+			authed.GET("/api-keys", middleware.SessionOnly(), apiKeyH.List)
+			authed.POST("/api-keys", middleware.SessionOnly(), apiKeyH.Create)
+			authed.DELETE("/api-keys/:id", middleware.SessionOnly(), apiKeyH.Delete)
 
-		// AI 模型：启用列表所有登录用户可查（选模型用）；管理操作仅管理员（handler 内校验）
-		authed.GET("/ai-models/enabled", aiModelH.EnabledList)
-		authed.GET("/ai-models", aiModelH.List)
-		authed.POST("/ai-models", aiModelH.Create)
-		authed.PUT("/ai-models/:id", aiModelH.Update)
-		authed.DELETE("/ai-models/:id", aiModelH.Delete)
+			authed.GET("/roles", roleH.List)
+			authed.POST("/roles", roleH.Create)
+			authed.PUT("/roles/:id", roleH.Update)
+			authed.DELETE("/roles/:id", roleH.Delete)
 
-	// AI 提示词：列表登录用户可查（AI 分析页按报告类型加载默认提示词）；管理操作仅管理员
-	authed.GET("/ai-prompts", aiPromptH.List)
-	authed.POST("/ai-prompts", aiPromptH.Create)
-	authed.PUT("/ai-prompts/:id", aiPromptH.Update)
-	authed.DELETE("/ai-prompts/:id", aiPromptH.Delete)
+			// AI 模型：启用列表所有登录用户可查（选模型用）；管理操作仅管理员（handler 内校验）
+			authed.GET("/ai-models/enabled", aiModelH.EnabledList)
+			authed.GET("/ai-models", aiModelH.List)
+			authed.POST("/ai-models", aiModelH.Create)
+			authed.PUT("/ai-models/:id", aiModelH.Update)
+			authed.DELETE("/ai-models/:id", aiModelH.Delete)
 
-	// AI 分析报告：创建后后端异步生成，前端轮询状态
-	authed.GET("/ai-reports", aiReportH.List)
-	authed.POST("/ai-reports", aiReportH.Create)
-	// 数据预览：按执行人+时间范围查看将提交给 AI 的工作数据（与生成取数逻辑一致）
-	authed.GET("/ai-reports/preview", aiReportH.Preview)
-	authed.GET("/ai-reports/:id", aiReportH.GetByID)
-	// 删除：发起人或管理员（handler 内校验）
-	authed.DELETE("/ai-reports/:id", aiReportH.Delete)
+			// AI 提示词：列表登录用户可查（AI 分析页按报告类型加载默认提示词）；管理操作仅管理员
+			authed.GET("/ai-prompts", aiPromptH.List)
+			authed.POST("/ai-prompts", aiPromptH.Create)
+			authed.PUT("/ai-prompts/:id", aiPromptH.Update)
+			authed.DELETE("/ai-prompts/:id", aiPromptH.Delete)
 
-	// OSS：配置仅管理员可读写；上传为登录用户（服务端中继，AK 不下发）
-	authed.GET("/oss-config", ossH.GetConfig)
-	authed.PUT("/oss-config", ossH.SaveConfig)
-	authed.POST("/uploads", ossH.Upload)
+			// AI 分析报告：创建后后端异步生成，前端轮询状态
+			authed.GET("/ai-reports", aiReportH.List)
+			authed.POST("/ai-reports", aiReportH.Create)
+			// 数据预览：按执行人+时间范围查看将提交给 AI 的工作数据（与生成取数逻辑一致）
+			authed.GET("/ai-reports/preview", aiReportH.Preview)
+			authed.GET("/ai-reports/:id", aiReportH.GetByID)
+			// 删除：发起人或管理员（handler 内校验）
+			authed.DELETE("/ai-reports/:id", aiReportH.Delete)
+
+			// OSS：配置仅管理员可读写；上传为登录用户（服务端中继，AK 不下发）
+			authed.GET("/oss-config", ossH.GetConfig)
+			authed.PUT("/oss-config", ossH.SaveConfig)
+			authed.POST("/uploads", ossH.Upload)
 
 			authed.GET("/projects", projectH.List)
 			authed.POST("/projects", projectH.Create)

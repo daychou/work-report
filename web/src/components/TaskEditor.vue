@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NModal, NInput, NSelect, NDatePicker, NButton, NCheckbox, useDialog } from 'naive-ui'
 import dayjs from 'dayjs'
 import { api, type Project, type User, type WorkItem } from '../api'
@@ -33,6 +33,7 @@ const isTodo = ref(false) // 待办勾选：尚未排期（清空开始/截止�
 const dueRemind = ref(true) // 到期提醒：勾选后截止日当天 18:00 提醒（新建默认勾选）
 const startRemind = ref(false) // 开始提醒：开始日期为未来时可勾选，当天 12:00 提醒
 const saving = ref(false)
+let hydrating = false // 弹窗回填期间为 true，用于跳过日期联动
 
 const isEdit = computed(() => !!props.editItem)
 // 开始日期为未来时展示「开始提醒」勾选项
@@ -48,6 +49,7 @@ const willStartOnSave = computed(
 
 // 「待办」勾选：清空开始/截止日期表示尚未排期；取消勾选恢复默认（今天 + 已完成勾选）
 watch(isTodo, (v) => {
+  if (hydrating) return // 回填时的重置不应把已有日期改成今天
   if (v) {
     workDate.value = null
     dueDate.value = null
@@ -60,17 +62,23 @@ watch(isTodo, (v) => {
   }
 })
 
-// 新建时：开始日期选未来 → 默认勾选开始提醒，且任务将进入「待办」（取消已完成）；选回今天/过去 → 恢复
+// 开始日期晚于截止日期时把截止日期一起顺延（反之则把开始日期提前），避免出现开始晚于截止的区间。
+// 打开弹窗回填数据时跳过：历史数据可能本就不合法，不该在用户没动手时悄悄改写
 watch(workDate, (v) => {
-  if (isEdit.value || v == null) return
+  if (v == null) return
+  if (!hydrating && dueDate.value != null && dayjs(v).isAfter(dayjs(dueDate.value), 'day')) dueDate.value = v
+  // 新建时：开始日期选未来 → 默认勾选开始提醒，且任务将进入「待办」（取消已完成）；选回今天/过去 → 恢复
+  if (isEdit.value) return
   const future = dayjs(v).isAfter(dayjs(), 'day')
   startRemind.value = future
   if (future) completed.value = false
 })
 
-// 新建时：截止日期选未来 → 任务尚未到推进节点，主动取消「已完成」默认勾选
 watch(dueDate, (v) => {
-  if (isEdit.value || v == null) return
+  if (v == null) return
+  if (!hydrating && workDate.value != null && dayjs(v).isBefore(dayjs(workDate.value), 'day')) workDate.value = v
+  // 新建时：截止日期选未来 → 任务尚未到推进节点，主动取消「已完成」默认勾选
+  if (isEdit.value) return
   if (dayjs(v).isAfter(dayjs(), 'day')) completed.value = false
 })
 
@@ -78,6 +86,8 @@ watch(
   () => props.show,
   (v) => {
     if (!v) return
+    hydrating = true
+    nextTick(() => (hydrating = false))
     if (props.editItem) {
       const it = props.editItem
       title.value = it.title

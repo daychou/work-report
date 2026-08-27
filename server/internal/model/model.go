@@ -78,23 +78,23 @@ type WorkItem struct {
 	AuthorID  uint    `gorm:"not null;index" json:"author_id"` // 提交人
 	Author    User    `gorm:"foreignKey:AuthorID" json:"author"`
 	// 负责人（默认提交人）与参与人：看板可见性 = 提交人/负责人/参与人，管理员全见
-	AssigneeID   *uint          `gorm:"index" json:"assignee_id"`
-	Assignee     *User          `gorm:"foreignKey:AssigneeID" json:"assignee"`
-	Participants []User         `gorm:"many2many:work_item_participants" json:"participants"`
-	Kind         string         `gorm:"size:16;not null;index" json:"kind"`                // plan / work
-	Status       string         `gorm:"size:16;not null;default:todo;index" json:"status"` // todo / doing / done / cancelled
-	Priority     string         `gorm:"size:8;default:medium" json:"priority"`             // high / medium / low
+	AssigneeID   *uint  `gorm:"index" json:"assignee_id"`
+	Assignee     *User  `gorm:"foreignKey:AssigneeID" json:"assignee"`
+	Participants []User `gorm:"many2many:work_item_participants" json:"participants"`
+	Kind         string `gorm:"size:16;not null;index" json:"kind"`                // plan / work
+	Status       string `gorm:"size:16;not null;default:todo;index" json:"status"` // todo / doing / done / cancelled
+	Priority     string `gorm:"size:8;default:medium" json:"priority"`             // high / medium / low
 	// WorkDate 开始日期（工作发生日，日报/周报聚合依据）；待办任务可为 NULL，表示尚未排期
-	WorkDate     *time.Time     `gorm:"type:date;index" json:"work_date"`
-	DueDate      *time.Time     `gorm:"type:date;index" json:"due_date"`                   // 截止日期（到期提醒依据）
+	WorkDate *time.Time `gorm:"type:date;index" json:"work_date"`
+	DueDate  *time.Time `gorm:"type:date;index" json:"due_date"` // 截止日期（到期提醒依据）
 	// DueRemind 勾选后：截止日期当天 18:00 平台内 + 飞书提醒作者与负责人任务快到期
 	DueRemind bool `gorm:"default:false" json:"due_remind"`
 	// StartRemind 勾选后：开始日期当天 12:00 平台内 + 飞书提醒作者与负责人任务开始（仅开始日期为未来时可勾选）
 	StartRemind bool           `gorm:"default:false" json:"start_remind"`
 	DoneAt      *time.Time     `json:"done_at"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 	// CommentCount 评论数（不入库，List 接口统计填充，看板卡片展示用）
 	CommentCount int64 `gorm:"-" json:"comment_count"`
 }
@@ -153,12 +153,12 @@ func (WorkItemParticipant) TableName() string { return "work_item_participants" 
 // 仅 Enabled 的模型可在「AI 分析」页被选用；APIKey 仅管理员接口返回。
 type AIModel struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
-	Name      string         `gorm:"size:64;not null" json:"name"`           // 显示名，如 DeepSeek V4 Flash
-	Provider  string         `gorm:"size:32;not null" json:"provider"`       // deepseek / ...（预留扩展）
-	ModelID   string         `gorm:"size:64;not null" json:"model_id"`       // 调 API 时的 model 参数
-	APIKey    string         `gorm:"size:256" json:"api_key,omitempty"`      // 仅管理员接口返回
-	BaseURL   string         `gorm:"size:256" json:"base_url"`               // 可空，缺省按 provider 默认
-	Enabled   bool           `gorm:"default:false" json:"enabled"`           // 启用后才可被选用
+	Name      string         `gorm:"size:64;not null" json:"name"`      // 显示名，如 DeepSeek V4 Flash
+	Provider  string         `gorm:"size:32;not null" json:"provider"`  // deepseek / ...（预留扩展）
+	ModelID   string         `gorm:"size:64;not null" json:"model_id"`  // 调 API 时的 model 参数
+	APIKey    string         `gorm:"size:256" json:"api_key,omitempty"` // 仅管理员接口返回
+	BaseURL   string         `gorm:"size:256" json:"base_url"`          // 可空，缺省按 provider 默认
+	Enabled   bool           `gorm:"default:false" json:"enabled"`      // 启用后才可被选用
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
@@ -187,13 +187,13 @@ func (AIPrompt) TableName() string { return "ai_prompts" }
 // 任务富文本中的图片/附件经服务端中继上传到该 Bucket，
 // Bucket 需公共读（或配置自定义域名），否则前端无法展示/下载
 type OSSConfig struct {
-	ID              uint   `gorm:"primaryKey" json:"id"`
-	Endpoint        string `gorm:"size:128;not null" json:"endpoint"` // 如 oss-cn-hangzhou.aliyuncs.com（不含协议）
-	Bucket          string `gorm:"size:64;not null" json:"bucket"`
-	AccessKeyID     string `gorm:"size:128;not null" json:"access_key_id"`
-	AccessKeySecret string `gorm:"size:128" json:"access_key_secret"` // 仅管理员接口返回
-	Dir             string `gorm:"size:128" json:"dir"`               // 对象 key 前缀目录，如 work-report
-	Domain          string `gorm:"size:256" json:"domain"`            // 自定义访问域名（含协议），空则用 https://bucket.endpoint
+	ID              uint           `gorm:"primaryKey" json:"id"`
+	Endpoint        string         `gorm:"size:128;not null" json:"endpoint"` // 如 oss-cn-hangzhou.aliyuncs.com（不含协议）
+	Bucket          string         `gorm:"size:64;not null" json:"bucket"`
+	AccessKeyID     string         `gorm:"size:128;not null" json:"access_key_id"`
+	AccessKeySecret string         `gorm:"size:128" json:"access_key_secret"` // 仅管理员接口返回
+	Dir             string         `gorm:"size:128" json:"dir"`               // 对象 key 前缀目录，如 work-report
+	Domain          string         `gorm:"size:256" json:"domain"`            // 自定义访问域名（含协议），空则用 https://bucket.endpoint
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
@@ -212,7 +212,7 @@ type AIReport struct {
 	ReportType  string         `gorm:"size:16;not null" json:"report_type"` // week / year
 	DateFrom    time.Time      `gorm:"type:date;not null" json:"date_from"`
 	DateTo      time.Time      `gorm:"type:date;not null" json:"date_to"`
-	ExtraPrompt string         `gorm:"type:text" json:"extra_prompt"` // 用户自定义提示词
+	ExtraPrompt string         `gorm:"type:text" json:"extra_prompt"`                        // 用户自定义提示词
 	Status      string         `gorm:"size:16;not null;default:running;index" json:"status"` // running / done / failed
 	Result      string         `gorm:"type:longtext" json:"result"`
 	Error       string         `gorm:"size:1024" json:"error"`
@@ -226,6 +226,7 @@ func All() []any {
 	return []any{
 		&Role{},
 		&User{},
+		&UserAPIKey{},
 		&Project{},
 		&WorkItem{},
 		&Comment{},

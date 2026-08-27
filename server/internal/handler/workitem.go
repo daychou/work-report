@@ -25,7 +25,7 @@ func parseDate(s string) (time.Time, error) {
 }
 
 // List 工作内容列表
-// 过滤参数：project_id / author_id / kind / status / date_from / date_to / due_before / visible
+// 过滤参数：project_id / author_id / assignee_id / kind / status / date_from / date_to / due_before / visible
 // visible=1 时按可见性过滤（提交人/负责人/参与人可见；管理员不受限）
 // limit 兜底防数据暴涨拖垮接口：默认 500，上限 1000
 func (h *WorkItemHandler) List(c *gin.Context) {
@@ -51,6 +51,9 @@ func (h *WorkItemHandler) List(c *gin.Context) {
 	}
 	if v := c.Query("author_id"); v != "" {
 		q = q.Where("author_id = ?", v)
+	}
+	if v := c.Query("assignee_id"); v != "" {
+		q = q.Where("assignee_id = ?", v)
 	}
 	if v := c.Query("kind"); v != "" {
 		q = q.Where("kind = ?", v)
@@ -162,9 +165,9 @@ func (h *WorkItemHandler) Create(c *gin.Context) {
 		ProjectID      uint   `json:"project_id" binding:"required"`
 		Kind           string `json:"kind"` // 可选，缺省 work（前端已不再区分类型，保留兼容旧调用）
 		Priority       string `json:"priority"`
-		Status         string `json:"status"`    // done / doing / todo
-		WorkDate       string `json:"work_date"` // YYYY-MM-DD，默认今天
-		DueDate        string `json:"due_date"`  // 可选
+		Status         string `json:"status"`       // done / doing / todo
+		WorkDate       string `json:"work_date"`    // YYYY-MM-DD，默认今天
+		DueDate        string `json:"due_date"`     // 可选
 		DueRemind      bool   `json:"due_remind"`   // 勾选后截止日当天 18:00 提醒
 		StartRemind    bool   `json:"start_remind"` // 勾选后开始日当天 12:00 提醒（仅未来开始日期生效）
 		AssigneeID     *uint  `json:"assignee_id"`
